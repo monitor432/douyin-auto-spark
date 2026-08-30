@@ -18,6 +18,7 @@ const DOUYIN_ACCOUNTS_KEY = 'DOUYIN_ACCOUNTS'
 const DOUYIN_ACCOUNTS_SHARD_PATTERN = /^DOUYIN_ACCOUNTS_(\d+)$/
 const DOUYIN_COOKIE_KEY = 'DOUYIN_COOKIE'
 const DOUYIN_TARGET_NAMES_KEY = 'DOUYIN_TARGET_NAMES'
+const DOUYIN_TARGET_NAMES_RUN_KEY = 'DOUYIN_TARGET_NAMES_RUN'
 const YIYAN_INCLUDE_SOURCE_KEY = 'YIYAN_INCLUDE_SOURCE'
 const SPARK_MESSAGE_TEMPLATE_KEY = 'SPARK_MESSAGE_TEMPLATE'
 const FAILURE_SCREENSHOT_DIRECTORY = 'artifacts'
@@ -482,7 +483,7 @@ function resolveDouyinAccounts(globalMessageTemplate: string | undefined): Douyi
 
   const accountNames = new Set<string>()
 
-  return accountSources.flatMap(({ sourceName, text }) => {
+  const accounts = accountSources.flatMap(({ sourceName, text }) => {
     const accountsValue = parseJson(text, sourceName)
 
     if (!Array.isArray(accountsValue) || accountsValue.length === 0) {
@@ -504,13 +505,15 @@ function resolveDouyinAccounts(globalMessageTemplate: string | undefined): Douyi
       }
       accountNames.add(name)
 
+      const configuredTargetNames = resolveTargetNameArray(
+        accountValue.targetNames,
+        `${accountSourceName}.targetNames`,
+      )
+
       return {
         name,
         cookies: resolveCookieArray(accountValue.cookie, `${accountSourceName}.cookie`),
-        targetNames: resolveTargetNameArray(
-          accountValue.targetNames,
-          `${accountSourceName}.targetNames`,
-        ),
+        targetNames: filterRunTargetNames(configuredTargetNames),
         messageTemplate: resolveAccountMessageTemplate(
           accountValue.messageTemplate,
           `${accountSourceName}.messageTemplate`,
@@ -519,6 +522,15 @@ function resolveDouyinAccounts(globalMessageTemplate: string | undefined): Douyi
       }
     })
   })
+
+  if (
+    process.env[DOUYIN_TARGET_NAMES_RUN_KEY]?.trim() &&
+    accounts.every((account) => account.targetNames.length === 0)
+  ) {
+    throw new Error(`本次指定的好友不在账号配置中：${process.env[DOUYIN_TARGET_NAMES_RUN_KEY]}`)
+  }
+
+  return accounts
 }
 
 function resolveDouyinAccountSources(): Array<{ sourceName: string; text: string }> {
@@ -596,6 +608,17 @@ function resolveLegacyDouyinCookies(): Cookie[] {
  * 解析单账号会话名称配置。
  */
 function resolveLegacyDouyinTargetNames(): string[] {
+  const runTargetNamesText = process.env[DOUYIN_TARGET_NAMES_RUN_KEY]?.trim()
+  if (runTargetNamesText) {
+    return resolveTargetNameArray(
+      runTargetNamesText
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean),
+      DOUYIN_TARGET_NAMES_RUN_KEY,
+    )
+  }
+
   const targetNamesText = process.env[DOUYIN_TARGET_NAMES_KEY]?.trim()
 
   if (!targetNamesText) {
@@ -608,6 +631,28 @@ function resolveLegacyDouyinTargetNames(): string[] {
     parseJson(targetNamesText, DOUYIN_TARGET_NAMES_KEY),
     DOUYIN_TARGET_NAMES_KEY,
   )
+}
+
+/**
+ * 手机/手动 workflow_dispatch 可传入逗号分隔的临时好友名单。
+ * 未传入时保持原有 Secret 配置不变。
+ */
+function filterRunTargetNames(configuredNames: string[]): string[] {
+  const override = process.env[DOUYIN_TARGET_NAMES_RUN_KEY]?.trim()
+  if (!override) {
+    return configuredNames
+  }
+
+  const selected = new Set(
+    override
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean),
+  )
+  if (selected.size === 0) {
+    throw new Error(`${DOUYIN_TARGET_NAMES_RUN_KEY} 不能为空`)
+  }
+  return configuredNames.filter((name) => selected.has(name))
 }
 
 function resolveCookieArray(value: unknown, sourceName: string): Cookie[] {

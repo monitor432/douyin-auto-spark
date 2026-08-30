@@ -108,7 +108,9 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 Actions -> 点击绿色的 I understand my workflows, go ahead and enable them -> 🚀 续一次火 -> Enable workflow -> Run workflow
 ```
 
-点击 `Run workflow` 后等待任务完成。手机打开抖音，你就可以发现你发了一条嘉豪语录给朋友了
+点击 `Run workflow` 后，可以在 `target_names` 中填写本次要续火的好友昵称，多个好友用英文逗号分隔，
+例如 `刘国梁,徐磊`；留空则使用 `DOUYIN_TARGET_NAMES` Secret 中的全部好友。等待任务完成后，
+手机打开抖音即可看到已发送的火花消息。
 
 ![run-workflow](assets/readme/run-workflow.jpg)
 
