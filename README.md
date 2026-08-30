@@ -101,6 +101,7 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 | `DOUYIN_TARGET_NAMES` | ✅ | 需要续火的好友名称 JSON 数组，例如 `["暮邵落白"]`，建议填写抖音备注名。不会写 JSON 的可以问下 AI |
 | `YIYAN_INCLUDE_SOURCE` | ❌ | 是否携带一言出处，默认开启；设置为 `false` 时只发送一言正文 |
 | `SPARK_MESSAGE_TEMPLATE` | ❌ | 自定义火花消息模板，见下方「✉️ 自定义消息模板」 |
+| `SPARK_STICKER_NAME` | ❌ | 原生表情名称，默认使用 `续火花`；设置后发送表情而不是文字 |
 
 #### 3️⃣ 手动运行一次
 
