@@ -138,7 +138,11 @@ async function runDouyinAccount(
       waitUntil: 'domcontentloaded',
     })
 
-    const searchInput = page.locator('input.semi-input[placeholder="搜索"]').first()
+    const searchInput = page
+      .locator(
+        'input.semi-input[placeholder="搜索"], input[placeholder*="搜索"], [role="textbox"][placeholder*="搜索"], input[aria-label*="搜索"]',
+      )
+      .first()
     const searchVisible = await searchInput
       .waitFor({ state: 'visible', timeout: CHAT_PAGE_READY_TIMEOUT })
       .then(() => true)
