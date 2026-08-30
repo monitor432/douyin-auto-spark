@@ -21,6 +21,7 @@ const DOUYIN_TARGET_NAMES_KEY = 'DOUYIN_TARGET_NAMES'
 const DOUYIN_TARGET_NAMES_RUN_KEY = 'DOUYIN_TARGET_NAMES_RUN'
 const YIYAN_INCLUDE_SOURCE_KEY = 'YIYAN_INCLUDE_SOURCE'
 const SPARK_MESSAGE_TEMPLATE_KEY = 'SPARK_MESSAGE_TEMPLATE'
+const SPARK_STICKER_NAME_KEY = 'SPARK_STICKER_NAME'
 const FAILURE_SCREENSHOT_DIRECTORY = 'artifacts'
 
 const CHAT_PAGE_READY_TIMEOUT = 30000
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
   const autoClose = resolveAutoClose()
   const includeYiyanSource = resolveYiyanIncludeSource()
   const globalMessageTemplate = resolveSparkMessageTemplate()
+  const sparkStickerName = resolveSparkStickerName()
   const accounts = resolveDouyinAccounts(globalMessageTemplate)
   const yiyans = await resolveYiyans()
   const browser = await chromium.launch({
@@ -70,7 +72,14 @@ async function main(): Promise<void> {
   try {
     for (const account of accounts) {
       try {
-        await runDouyinAccount(browser, account, yiyans, includeYiyanSource, autoClose)
+        await runDouyinAccount(
+          browser,
+          account,
+          yiyans,
+          includeYiyanSource,
+          autoClose,
+          sparkStickerName,
+        )
       } catch (error) {
         const accountError = toError(error)
         failures.push(
@@ -115,6 +124,7 @@ async function runDouyinAccount(
   yiyans: Yiyan[],
   includeYiyanSource: boolean,
   autoClose: boolean,
+  sparkStickerName: string | undefined,
 ): Promise<void> {
   const context = await browser.newContext()
   let page: Page | undefined
@@ -169,23 +179,26 @@ async function runDouyinAccount(
       await editorInput.waitFor({ state: 'visible', timeout: 10000 })
       await editorInput.click()
 
-      let message: string
-
-      if (account.messageTemplate !== undefined) {
-        message = renderMessageTemplate(
-          account.messageTemplate,
-          account.name,
-          targetName,
-          needsYiyan ? pickRandomYiyan(yiyans) : undefined,
-        )
+      if (sparkStickerName) {
+        await sendSparkSticker(page, sparkStickerName)
+        console.log(`[${account.name}] 已发送原生表情「${sparkStickerName}」：${targetName}`)
       } else {
-        const yiyan = pickRandomYiyan(yiyans)
-        message = includeYiyanSource ? `${yiyan.hitokoto}\n——「${yiyan.from}」` : yiyan.hitokoto
+        let message: string
+        if (account.messageTemplate !== undefined) {
+          message = renderMessageTemplate(
+            account.messageTemplate,
+            account.name,
+            targetName,
+            needsYiyan ? pickRandomYiyan(yiyans) : undefined,
+          )
+        } else {
+          const yiyan = pickRandomYiyan(yiyans)
+          message = includeYiyanSource ? `${yiyan.hitokoto}\n——「${yiyan.from}」` : yiyan.hitokoto
+        }
+        await page.keyboard.insertText(message)
+        await page.keyboard.press('Enter')
+        console.log(`[${account.name}] 已发送消息：${targetName}`)
       }
-
-      await page.keyboard.insertText(message)
-      await page.keyboard.press('Enter')
-      console.log(`[${account.name}] 已发送消息：${targetName}`)
       await page.waitForTimeout(1000)
     }
 
@@ -406,6 +419,27 @@ function resolveSparkMessageTemplate(): string | undefined {
   }
 
   return normalizeMessageTemplate(template, SPARK_MESSAGE_TEMPLATE_KEY)
+}
+
+/** 解析原生续火花表情名称；配置后将点击表情面板，不发送文字。 */
+function resolveSparkStickerName(): string | undefined {
+  const sticker = process.env[SPARK_STICKER_NAME_KEY]?.trim()
+  return sticker || undefined
+}
+
+async function sendSparkSticker(page: Page, stickerName: string): Promise<void> {
+  const button = page
+    .locator(
+      'svg.messageMsgInputiconAction, button[aria-label*="表情"], [role="button"][aria-label*="表情"], [title*="表情"]',
+    )
+    .filter({ visible: true })
+    .first()
+  await button.waitFor({ state: 'visible', timeout: 10000 })
+  await button.click({ force: true })
+
+  const item = page.locator('.emojiEmojiItememojiItem').filter({ hasText: stickerName }).first()
+  await item.waitFor({ state: 'visible', timeout: 10000 })
+  await item.click({ force: true })
 }
 
 /**
