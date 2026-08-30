@@ -101,6 +101,7 @@ jobs:
           DOUYIN_TARGET_NAMES_RUN: ${{ inputs.target_names }}
           YIYAN_INCLUDE_SOURCE: ${{ secrets.YIYAN_INCLUDE_SOURCE }}
           SPARK_MESSAGE_TEMPLATE: ${{ secrets.SPARK_MESSAGE_TEMPLATE }}
+          SPARK_STICKER_NAME: ${{ secrets.SPARK_STICKER_NAME || '续火花' }}
         run: bun src/main.ts
 
       - name: 检查邮件配置 (Check mail configuration)
