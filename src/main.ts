@@ -200,8 +200,8 @@ async function runDouyinAccount(
       await editorInput.click()
 
       if (sparkStickerName) {
-        await sendSparkSticker(page, sparkStickerName)
-        console.log(`[${account.name}] 已发送原生表情「${sparkStickerName}」：${targetName}`)
+        await sendSparkSticker(page, editorInput, sparkStickerName)
+        console.log(`[${account.name}] 已提交原生表情「${sparkStickerName}」：${targetName}`)
       } else {
         let message: string
         if (account.messageTemplate !== undefined) {
@@ -447,7 +447,11 @@ function resolveSparkStickerName(): string | undefined {
   return sticker || undefined
 }
 
-async function sendSparkSticker(page: Page, stickerName: string): Promise<void> {
+async function sendSparkSticker(
+  page: Page,
+  editorInput: Locator,
+  stickerName: string,
+): Promise<void> {
   const button = page
     .locator(
       'svg.messageMsgInputiconAction, button[aria-label*="表情"], [role="button"][aria-label*="表情"], [title*="表情"]',
@@ -460,6 +464,12 @@ async function sendSparkSticker(page: Page, stickerName: string): Promise<void> 
   const item = page.locator('.emojiEmojiItememojiItem').filter({ hasText: stickerName }).first()
   await item.waitFor({ state: 'visible', timeout: 10000 })
   await item.click({ force: true })
+
+  // 点击表情只会把表情放入编辑器，不会自动发送；重新聚焦编辑器后按回车提交。
+  // 这与文字消息分支使用的发送方式一致，避免只选中表情却没有真正发出。
+  await editorInput.click()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(500)
 }
 
 /**
