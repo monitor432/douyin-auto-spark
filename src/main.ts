@@ -149,7 +149,23 @@ async function runDouyinAccount(
       .catch(() => false)
 
     if (!searchVisible) {
-      throw new Error('聊天页搜索框未出现，Cookie 可能已经失效')
+      const pageUrl = page.url()
+      const pageTitle = await page.title().catch(() => '')
+      const pageText = (
+        await page
+          .locator('body')
+          .innerText()
+          .catch(() => '')
+      )
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 180)
+      console.error(
+        `[${account.name}] 聊天页未就绪：url=${pageUrl} title=${pageTitle || '(空)'} text=${pageText || '(空)'}`,
+      )
+      throw new Error(
+        '聊天页搜索框未出现，抖音可能未识别 Cookie，或云端页面被拦截；请查看失败截图和页面诊断信息',
+      )
     }
 
     await waitForChatListReady(page, account.name)

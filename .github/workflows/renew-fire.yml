@@ -104,6 +104,15 @@ jobs:
           SPARK_STICKER_NAME: ${{ secrets.SPARK_STICKER_NAME || '续火花' }}
         run: bun src/main.ts
 
+      - name: 上传失败现场 (Upload failure diagnostics)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-diagnostics-${{ github.run_id }}
+          path: artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: 检查邮件配置 (Check mail configuration)
         id: mail-config
         if: ${{ always() }}
