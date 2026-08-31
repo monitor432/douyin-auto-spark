@@ -119,6 +119,40 @@ Actions -> 点击绿色的 I understand my workflows, go ahead and enable them -
 
 如果手动运行一次没报错，那么默认情况下，每天北京时间 0 点会自动续一次火（不需要配置任何其他东西），但是由于 github 会延迟，大概最多凌晨 3 点之前会自动续一次火
 
+### 🏠 自托管 Runner（本机 Mac 运行，推荐）
+
+> 云端 GitHub Runner 的机房 IP 容易被抖音风控拦截（页面直接跳到登录页，Cookie 失效）。
+> 把 Runner 跑在自己家 Mac 上：家庭宽带 IP + 本机 Chrome，风控通过率高得多。
+
+本仓库的 `renew-fire.yml` 已适配 macOS 自托管 Runner（`runs-on: [self-hosted, macOS]`），
+特点：
+
+- 复用本机 `/Applications/Google Chrome.app`，无需下载 Playwright 浏览器
+- 每天 0/2/4 点、8:30/12:30、20:00（北京时间）多次触发，Mac 睡眠期间任务排队，唤醒后自动补跑
+- 「当日成功幂等锁」保证一天只真正发送一次，排队补跑会自动跳过
+- PR 检查 workflow 仍然只跑云端 ubuntu，外来 PR 代码不会在你 Mac 上执行
+
+在一台 Mac 上完成以下一次性配置（以 Apple Silicon 为例）：
+
+```bash
+# 1. 下载 runner（版本号以 https://github.com/actions/runner/releases 最新为准）
+mkdir ~/actions-runner && cd ~/actions-runner
+curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.325.0/actions-runner-osx-arm64-2.325.0.tar.gz
+tar xzf ./runner.tar.gz
+
+# 2. 注册到本仓库（token 在 GitHub 仓库页 Settings -> Actions -> Runners -> New self-hosted runner 获取）
+./config.sh --url https://github.com/<你的用户名>/douyin-auto-spark --token <注册TOKEN> --unattended
+
+# 3. 设为常驻服务（用户级 LaunchAgent，无需 sudo；登录后自动启动、崩溃自动拉起）
+cp <你的 plist> ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/actions.runner.*.plist
+```
+
+⚠️ 安全提醒：仓库是公开的，请到 `Settings -> Actions -> General -> Fork pull request workflows`
+设置为 **Require approval for all external contributors**，避免陌生人的 PR 触发工作流。
+⚠️ 注意：MacBook 合盖睡眠时 Runner 会离线，任务会排队到唤醒后自动执行；台式机可
+`sudo pmset repeat wakeorpoweron MTWRFSU 23:50:00` 设置每天凌晨定时唤醒。
+
 ### 💻 本地运行
 
 #### 1️⃣ 安装依赖

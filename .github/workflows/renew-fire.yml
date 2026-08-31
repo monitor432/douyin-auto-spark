@@ -9,7 +9,13 @@ on:
         type: string
         default: ""
   schedule:
+    # 自托管 Runner 跑在家里的 Mac 上：睡眠期间任务会排队，唤醒后自动补跑，
+    # 多个时段互为兜底，重复触发由 run 作业内的「当日成功幂等锁」去重。
     - cron: "0 0,2,4 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "30 8,12 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "0 20 * * *"
       timezone: "Asia/Shanghai"
 
 permissions:
@@ -62,17 +68,14 @@ jobs:
   run:
     needs: check
     if: ${{ always() && (github.event_name != 'schedule' || needs.check.outputs.should_run == 'true') }}
-    runs-on: ubuntu-22.04
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.0-jammy
+    # 自托管 Runner：跑在本机 Mac 上，使用家庭宽带 IP + 本机 Chrome，绕开云端机房 IP 的抖音风控。
+    # 注意：macOS 不支持 job container，浏览器直接复用本机 Chrome。
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 30
 
     steps:
       - name: 克隆当前仓库 (Clone current repo)
         uses: actions/checkout@v7
-
-      - name: 安装 unzip (Install unzip)
-        run: apt-get update && apt-get install -y unzip
 
       - name: 安装 Bun (Set up Bun)
         uses: oven-sh/setup-bun@v2
@@ -82,7 +85,25 @@ jobs:
       - name: 安装运行时依赖 (Install dependencies)
         run: bun install --production --ignore-scripts
 
+      # Mac 睡眠期间多个时段的任务会同时排队，唤醒后会按顺序补跑；
+      # 用本机锁文件保证一天只真正发送一次，避免给好友连发几条相同消息。
+      - name: 当日成功幂等检查 (Skip if today already succeeded)
+        id: idempotency
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          LOCK_DIR="$HOME/.douyin-auto-spark"
+          LOCK_FILE="$LOCK_DIR/last-success-date"
+          mkdir -p "$LOCK_DIR"
+          TODAY="$(TZ=Asia/Shanghai date +%F)"
+          if [ -f "$LOCK_FILE" ] && [ "$(cat "$LOCK_FILE")" = "$TODAY" ]; then
+            echo "北京日期 ${TODAY} 已成功续过火，跳过本次排队补跑"
+            echo "should_skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 续一次火 (Run spark job)
+        if: ${{ steps.idempotency.outputs.should_skip != 'true' }}
         env:
           # DOUYIN_ACCOUNTS 仅用于兼容历史配置；新多账号配置请使用编号分片。
           DOUYIN_ACCOUNTS: ${{ secrets.DOUYIN_ACCOUNTS }}
@@ -102,7 +123,17 @@ jobs:
           YIYAN_INCLUDE_SOURCE: ${{ secrets.YIYAN_INCLUDE_SOURCE }}
           SPARK_MESSAGE_TEMPLATE: ${{ secrets.SPARK_MESSAGE_TEMPLATE }}
           SPARK_STICKER_NAME: ${{ secrets.SPARK_STICKER_NAME || '续火花' }}
+          # macOS 自托管：直接使用本机 Chrome，无需下载 Playwright 内置浏览器
+          PLAYWRIGHT_BROWSER_PATH: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
         run: bun src/main.ts
+
+      - name: 记录今日成功 (Mark today as done)
+        if: ${{ success() }}
+        run: |
+          LOCK_DIR="$HOME/.douyin-auto-spark"
+          mkdir -p "$LOCK_DIR"
+          TZ=Asia/Shanghai date +%F > "$LOCK_DIR/last-success-date"
+          echo "已记录今日续火成功：$(cat "$LOCK_DIR/last-success-date")"
 
       - name: 上传失败现场 (Upload failure diagnostics)
         if: ${{ always() }}
@@ -128,7 +159,7 @@ jobs:
           fi
 
       - name: 发送补充执行成功邮件 (Send retry success email)
-        if: ${{ success() && github.event_name == 'schedule' && needs.check.outputs.is_retry == 'true' && steps.mail-config.outputs.enabled == 'true' }}
+        if: ${{ success() && github.event_name == 'schedule' && needs.check.outputs.is_retry == 'true' && steps.mail-config.outputs.enabled == 'true' && steps.idempotency.outputs.should_skip != 'true' }}
         uses: dawidd6/action-send-mail@v18
         with:
           server_address: ${{ secrets.MAIL_HOST || 'smtp.qq.com' }}
