@@ -201,7 +201,7 @@ async function runDouyinAccount(
 
       if (sparkStickerName) {
         await sendSparkSticker(page, editorInput, sparkStickerName)
-        console.log(`[${account.name}] 已提交原生表情「${sparkStickerName}」：${targetName}`)
+        console.log(`[${account.name}] 已发送原生表情「${sparkStickerName}」：${targetName}`)
       } else {
         let message: string
         if (account.messageTemplate !== undefined) {
@@ -452,6 +452,10 @@ async function sendSparkSticker(
   editorInput: Locator,
   stickerName: string,
 ): Promise<void> {
+  const chatHistory = page
+    .locator('[class*="messageList"], [class*="chatMessage"], [class*="ChatMessage"]')
+    .first()
+  const messageCountBefore = await chatHistory.locator('*').count()
   const button = page
     .locator(
       'svg.messageMsgInputiconAction, button[aria-label*="表情"], [role="button"][aria-label*="表情"], [title*="表情"]',
@@ -465,11 +469,28 @@ async function sendSparkSticker(
   await item.waitFor({ state: 'visible', timeout: 10000 })
   await item.click({ force: true })
 
-  // 点击表情只会把表情放入编辑器，不会自动发送；重新聚焦编辑器后按回车提交。
-  // 这与文字消息分支使用的发送方式一致，避免只选中表情却没有真正发出。
-  await editorInput.click()
-  await page.keyboard.press('Enter')
-  await page.waitForTimeout(500)
+  const sendButton = page
+    .locator(
+      '[class*="sendBtn"], [class*="send-btn"], [class*="SendBtn"], button[aria-label*="发送"], [role="button"][aria-label*="发送"]',
+    )
+    .filter({ visible: true })
+    .first()
+  await sendButton.waitFor({ state: 'visible', timeout: 10000 })
+  await sendButton.click()
+
+  const messageSent = await chatHistory
+    .locator('*', { hasText: stickerName })
+    .first()
+    .waitFor({ state: 'visible', timeout: 10000 })
+    .then(() => true)
+    .catch(() => false)
+
+  if (!messageSent) {
+    const messageCountAfter = await chatHistory.locator('*').count()
+    if (messageCountAfter <= messageCountBefore) {
+      throw new Error(`原生表情「${stickerName}」未出现在聊天记录中，可能没有真正发送`)
+    }
+  }
 }
 
 /**
